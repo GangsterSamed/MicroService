@@ -1,0 +1,137 @@
+services:
+  # Database Service
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-yourpassword}
+      POSTGRES_DB: ${DB_NAME:-postgres}
+      PGSTARTTIMEOUT: 30
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - microservice-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - microservice-net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # User Service
+  user:
+    build:
+      context: .
+      dockerfile: user/Dockerfile
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      DB_SSLMODE: disable
+      GRPC_PORT: 50051
+      AUTH_SERVICE_ADDR: auth:50051
+      LOG_LEVEL: ${LOG_LEVEL}
+    networks:
+      - microservice-net
+    depends_on:
+      db:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
+  # Auth Service
+  auth:
+    build:
+      context: .
+      dockerfile: auth/Dockerfile
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRE_HOURS: 24
+      USER_SERVICE_ADDR: user:50051
+      GRPC_PORT: 50051
+    networks:
+      - microservice-net
+    depends_on:
+      user:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
+  # Geo Service
+  geo:
+    build:
+      context: .
+      dockerfile: geo/Dockerfile
+    environment:
+      DADATA_API_KEY: ${DADATA_API_KEY}
+      DADATA_SECRET_KEY: ${DADATA_SECRET_KEY}
+      AUTH_SERVICE_ADDR: auth:50051
+      GRPC_SERVER_ADDR: :50051
+      REDIS_ADDR: redis:6379
+      LOG_LEVEL: ${LOG_LEVEL}
+    networks:
+      - microservice-net
+    depends_on:
+      - auth
+      - redis
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
+  # Proxy Service (полностью сохранена конфигурация)
+  proxy:
+    build:
+      context: .
+      dockerfile: proxy/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ENV: ${ENV:-development}
+      GEO_SERVICE_ADDR: geo:50051
+      AUTH_SERVICE_ADDR: auth:50051
+      USER_SERVICE_ADDR: user:50051
+      LOG_LEVEL: ${LOG_LEVEL}
+    networks:
+      - microservice-net
+    depends_on:
+      - geo
+      - auth
+      - user
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+
+networks:
+  microservice-net:
+    driver: bridge
+    name: geo-network
+
+volumes:
+  postgres_data:
+    name: geo-postgres-data
+  redis_data:
+    name: geo-redis-data

@@ -1,0 +1,117 @@
+basePath: /api/user
+definitions:
+  models.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  models.ListUsersResponse:
+    properties:
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total_count:
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/models.UserProfile'
+        type: array
+    type: object
+  models.UserProfile:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      status:
+        description: active/banned etc
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.UserProfileResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+host: localhost:8081
+info:
+  contact:
+    email: romanmalcev89665@gmail.com
+    name: Roman Malcev
+  description: Микросервис управления пользователями
+  title: User Service API
+  version: "1.0"
+paths:
+  /api/user/list:
+    get:
+      description: Возвращает список пользователей с пагинацией
+      parameters:
+      - default: 10
+        description: Лимит
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение
+        in: query
+        name: offset
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListUsersResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Список пользователей
+      tags:
+      - User
+  /api/user/profile:
+    get:
+      description: Возвращает профиль пользователя по ID
+      parameters:
+      - description: ID пользователя
+        in: query
+        name: user_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserProfileResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Получить профиль пользователя
+      tags:
+      - User
+schemes:
+- http
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

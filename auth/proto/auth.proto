@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package auth;
+
+option go_package = "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/auth/proto";
+
+// Сервис аутентификации и авторизации
+service AuthService {
+  // Регистрация нового пользователя
+  rpc Register(RegisterRequest) returns (AuthResponse);
+ 
+  // Аутентификация пользователя
+  rpc Login(LoginRequest) returns (AuthResponse);
+
+  // Валидация JWT токена
+  rpc ValidateToken(TokenRequest) returns (TokenResponse);
+}
+
+// Запрос на регистрацию
+message RegisterRequest {
+  string email = 1;      // Email пользователя
+  string password = 2;   // Пароль (минимум 8 символов)
+}
+
+// Запрос на вход
+message LoginRequest {
+  string email = 1;      // Email пользователя
+  string password = 2;   // Пароль
+}
+
+// Ответ с токеном
+message AuthResponse {
+  string token = 1;         // JWT токен
+  string user_id = 2;       // Идентификатор пользователя
+  int64 expires_at = 3;     // Unix timestamp истечения токена
+}
+
+// Запрос на валидацию токена
+message TokenRequest {
+  string token = 1;      // JWT токен для проверки
+}
+
+// Ответ валидации
+message TokenResponse {
+  bool valid = 1;        // Статус валидности
+  string user_id = 2;    // Идентификатор пользователя
+  int64 expires_at = 3;  // Unix timestamp истечения токена
+}
+
+// Сообщение об ошибке (опционально)
+message Error {
+  string message = 1;    // Описание ошибки
+  int32 code = 2;        // Код ошибки
+}

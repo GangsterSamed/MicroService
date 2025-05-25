@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package geo;
+
+option go_package = "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/geo/proto";
+
+service GeoService {
+  rpc AddressSearch(SearchRequest) returns (AddressResponse);
+  rpc GeoCode(GeoRequest) returns (AddressResponse);
+}
+
+message SearchRequest {
+  string query = 1;
+  string token = 2; // Добавлено для авторизации
+}
+
+message GeoRequest {
+  string lat = 1;
+  string lng = 2;
+  string token = 3; // Добавлено для авторизации
+}
+
+message AddressResponse {
+  repeated Address addresses = 1;
+}
+ 
+message Address {
+  string city = 1;
+  string street = 2;
+  string house = 3;
+  string lat = 4;
+  string lon = 5;
+}
