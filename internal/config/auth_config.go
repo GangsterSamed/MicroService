@@ -7,16 +7,14 @@ import (
 type AuthConfig struct {
 	// Основные настройки
 	Environment     string        `env:"ENV" envDefault:"development"`
-	HTTPPort        int           `env:"HTTP_PORT" envDefault:"8081"`
+	HTTPPort        int           `env:"HTTP_PORT" envDefault:"8080"`
 	GRPCPort        int           `env:"GRPC_PORT" envDefault:"50051"`
+	UserServiceAddr string        `env:"USER_SERVICE_ADDR" envDefault:"user:50051"`
+	JWTSecret       string        `env:"JWT_SECRET" envDefault:"your-secret-key"`
+	ReadTimeout     time.Duration `env:"AUTH_READ_TIMEOUT" envDefault:"10s"`
+	WriteTimeout    time.Duration `env:"AUTH_WRITE_TIMEOUT" envDefault:"30s"`
+	IdleTimeout     time.Duration `env:"AUTH_IDLE_TIMEOUT" envDefault:"60s"`
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"10s"`
-
-	// Настройки сервисов
-	UserServiceAddr string `env:"USER_SERVICE_ADDR" envDefault:"user:50051"`
-
-	// Настройки аутентификации
-	JWTSecret      string `env:"JWT_SECRET,required"`
-	JWTExpireHours int    `env:"JWT_EXPIRE_HOURS" envDefault:"24"`
 
 	// Настройки логирования
 	LogLevel  string `env:"LOG_LEVEL" envDefault:"info"`

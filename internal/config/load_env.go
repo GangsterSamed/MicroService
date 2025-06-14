@@ -9,7 +9,7 @@ import (
 func LoadAuthConfig() (*AuthConfig, error) {
 	var cfg AuthConfig
 	if err := env.Parse(&cfg); err != nil {
-		return nil, err
+		return nil, errors.New("load env fail")
 	}
 	if len(cfg.JWTSecret) < 32 {
 		return nil, errors.New("JWT_SECRET must be at least 32 characters long")
@@ -21,7 +21,7 @@ func LoadAuthConfig() (*AuthConfig, error) {
 func LoadGeoConfig() (*GeoConfig, error) {
 	var cfg GeoConfig
 	if err := env.Parse(&cfg); err != nil {
-		return nil, err
+		return nil, errors.New("load env fail")
 	}
 	if cfg.DadataAPIKey == "" || cfg.DadataSecretKey == "" {
 		return nil, errors.New("DADATA_API_KEY and DADATA_SECRET_KEY are required")
@@ -33,7 +33,7 @@ func LoadGeoConfig() (*GeoConfig, error) {
 func LoadUserConfig() (*UserConfig, error) {
 	var cfg UserConfig
 	if err := env.Parse(&cfg); err != nil {
-		return nil, err
+		return nil, errors.New("load env fail")
 	}
 	return &cfg, nil
 }
@@ -42,7 +42,7 @@ func LoadUserConfig() (*UserConfig, error) {
 func LoadProxyConfig() (*ProxyConfig, error) {
 	var cfg ProxyConfig
 	if err := env.Parse(&cfg); err != nil {
-		return nil, err
+		return nil, errors.New("load env fail")
 	}
 	return &cfg, nil
 }

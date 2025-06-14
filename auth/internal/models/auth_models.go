@@ -1,8 +1,9 @@
 package models
 
 import (
-	"github.com/golang-jwt/jwt/v5"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // User - модель пользователя для регистрации/авторизации
@@ -27,9 +28,9 @@ type LoginRequest struct {
 
 // AuthResponse - ответ с токеном
 type AuthResponse struct {
-	Token     string    `json:"token"`
-	ExpiresAt time.Time `json:"expires_at"`
-	UserID    string    `json:"user_id"`
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expires_at"` // Время в формате ISO 8601
+	UserID    string `json:"user_id"`
 }
 
 // ErrorResponse - обертка для ошибок API

@@ -3,19 +3,14 @@ services:
   db:
     image: postgres:14
     environment:
-      POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-yourpassword}
-      POSTGRES_DB: ${DB_NAME:-postgres}
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: users
       PGSTARTTIMEOUT: 30
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - microservice-net
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -24,11 +19,6 @@ services:
       - redis_data:/data
     networks:
       - microservice-net
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 3
 
   # User Service
   user:
@@ -38,23 +28,18 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: 5432
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
+      DB_USER: user
+      DB_PASSWORD: password
+      DB_NAME: users
       DB_SSLMODE: disable
       GRPC_PORT: 50051
-      AUTH_SERVICE_ADDR: auth:50051
       LOG_LEVEL: ${LOG_LEVEL}
+      GRPC_CONNECT_TIMEOUT: 30s
+      GRPC_SERVER_START_DELAY: 5s
     networks:
       - microservice-net
     depends_on:
-      db:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
-      interval: 10s
-      timeout: 2s
-      retries: 3
+      - db
 
   # Auth Service
   auth:
@@ -66,16 +51,11 @@ services:
       JWT_EXPIRE_HOURS: 24
       USER_SERVICE_ADDR: user:50051
       GRPC_PORT: 50051
+      GRPC_CONNECT_TIMEOUT: 30s
     networks:
       - microservice-net
     depends_on:
-      user:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
-      interval: 10s
-      timeout: 2s
-      retries: 3
+      - user
 
   # Geo Service
   geo:
@@ -89,16 +69,12 @@ services:
       GRPC_SERVER_ADDR: :50051
       REDIS_ADDR: redis:6379
       LOG_LEVEL: ${LOG_LEVEL}
+      GRPC_CONNECT_TIMEOUT: 30s
     networks:
       - microservice-net
     depends_on:
       - auth
       - redis
-    healthcheck:
-      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
-      interval: 10s
-      timeout: 2s
-      retries: 3
 
   # Proxy Service (полностью сохранена конфигурация)
   proxy:
@@ -113,17 +89,14 @@ services:
       AUTH_SERVICE_ADDR: auth:50051
       USER_SERVICE_ADDR: user:50051
       LOG_LEVEL: ${LOG_LEVEL}
+      GRPC_CONNECT_TIMEOUT: 30s
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key}
     networks:
       - microservice-net
     depends_on:
       - geo
       - auth
       - user
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 2s
-      retries: 3
 
 networks:
   microservice-net:

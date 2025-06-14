@@ -1,49 +1,76 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"os"
-	_ "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/geo/docs"
+	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/shutdown"
+
+	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/geo/internal/provider"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/config"
 	logger2 "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/logger"
 )
 
-// @title Geo Service API
-// @version 1.0
-// @description Сервис геокодирования и поиска адресов
-// @host localhost:8080
-// @BasePath /api/address
-// @schemes http
-// @securityDefinitions.apikey ApiKeyAuth
-// @in header
-// @name Authorization
 func main() {
-	cfg, err := config.LoadGeoConfig()
-	if err != nil {
-		slog.Error("Failed to load config", "error", err)
+	if err := run(); err != nil {
+		slog.Error("geo service failed", "error", err)
 		os.Exit(1)
 	}
+}
 
-	makeLogger := logger2.SetupLogger(cfg.LogLevel, cfg.LogFormat).With(
+func run() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// 1. Инициализация конфигурации
+	cfg, err := config.LoadGeoConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// 2. Инициализация логгера
+	logger := logger2.SetupLogger(cfg.LogLevel, cfg.LogFormat).With(
 		"service", "geo",
 		"version", "1.0",
 		"env", cfg.Environment,
 	)
-	slog.SetDefault(makeLogger)
+	slog.SetDefault(logger)
 
-	// Инициализация зависимостей
-	redisClient := initRedis(cfg, makeLogger)
-	authClient := initAuthClient(cfg, makeLogger)
-	geoProvider := initGeoProvider(cfg)
+	// 3. Инициализация Redis
+	redisClient := initRedis(cfg, logger)
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			logger.Error("failed to close redis", "error", err)
+		}
+	}()
 
-	// Запуск серверов
-	httpServer, err := startHTTPServer(cfg, makeLogger)
+	// 4. Инициализация провайдера геоданных
+	geoProvider := provider.NewGeoProviderAdapter(
+		provider.NewGeoService(cfg.DadataAPIKey, cfg.DadataSecretKey),
+	)
+
+	// 5. Настройка и запуск gRPC сервера
+	grpcServer, err := setupGRPCServer(geoProvider, redisClient, cfg, logger)
 	if err != nil {
-		makeLogger.Error("Failed to start HTTP server", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to setup gRPC server: %w", err)
 	}
-	grpcServer := startGRPCServer(cfg, redisClient, authClient, geoProvider, makeLogger)
+	listener, err := startGRPCServer(ctx, grpcServer, cfg.GRPCPort, logger)
+	if err != nil {
+		return fmt.Errorf("failed to start gRPC server: %w", err)
+	}
+	defer func() {
+		if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			logger.Error("Failed to close listener", "error", err)
+		}
+	}()
 
-	// Ожидание сигналов завершения
-	waitForShutdown(httpServer, grpcServer, cfg.ShutdownTimeout, makeLogger)
+	// 6. Ожидание сигналов завершения
+	if err := shutdown.WaitForShutdown(ctx, grpcServer, listener, cfg.ShutdownTimeout, logger); err != nil {
+		return fmt.Errorf("shutdown failed: %w", err)
+	}
+
+	return nil
 }

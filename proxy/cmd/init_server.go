@@ -1,22 +1,18 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 	"log/slog"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/config"
 	logger2 "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/logger"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/handler"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/service"
 )
-
-// Структура для хранения серверов
-type servers struct {
-	http *http.Server
-}
 
 func startHTTPServer(cfg *config.ProxyConfig, proxyService service.ProxyService, logger *slog.Logger) *http.Server {
 	router := gin.New()
@@ -24,20 +20,39 @@ func startHTTPServer(cfg *config.ProxyConfig, proxyService service.ProxyService,
 	router.Use(logger2.GinLoggerMiddleware(logger))
 
 	// Swagger
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.URL("/swagger/doc.json")))
 
-	// Инициализация обработчиков
-	proxyHandler := handler.NewProxyHandler(proxyService, logger)
+	// Initialize proxy handler
+	proxyHandler, err := handler.NewProxyHandler(proxyService, logger)
+	if err != nil {
+		logger.Error("Failed to initialize proxy handler", "error", err)
+		return nil
+	}
 
 	// Роуты
+	// Группа для API
 	api := router.Group("/api")
 	{
-		api.POST("/address/search", proxyHandler.HandleGeoRequest())
-		api.POST("/address/geocode", proxyHandler.HandleGeoRequest())
-		api.POST("/auth/register", proxyHandler.HandleAuthRequest())
-		api.POST("/auth/login", proxyHandler.HandleAuthRequest())
-		api.GET("/user/profile", proxyHandler.HandleUserRequest())
-		api.GET("/user/list", proxyHandler.HandleUserRequest())
+		// Auth endpoints
+		auth := api.Group("/auth")
+		{
+			auth.POST("/register", proxyHandler.HandleRegisterRequest())
+			auth.POST("/login", proxyHandler.HandleLoginRequest())
+		}
+
+		// User endpoints
+		user := api.Group("/user")
+		{
+			user.GET("/profile", proxyHandler.HandleProfileRequest())
+			user.GET("/list", proxyHandler.HandleListRequest())
+		}
+
+		// Geo endpoints
+		geo := api.Group("/address")
+		{
+			geo.POST("/search", proxyHandler.HandleSearchRequest())
+			geo.POST("/geocode", proxyHandler.HandleGeocodeRequest())
+		}
 	}
 
 	// Health check

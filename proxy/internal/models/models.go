@@ -1,39 +1,63 @@
 package models
 
-import "net/http"
+import (
+	"time"
+)
 
-type GeoRequest struct {
+// GeoSearchRequest описывает запрос на поиск адреса
+type GeoSearchRequest struct {
 	Query string `json:"query" example:"Москва"`
 }
 
+// GeoGeocodeRequest описывает запрос на геокодирование
+type GeoGeocodeRequest struct {
+	Lat string `json:"lat" example:"55.7558"`
+	Lng string `json:"lng" example:"37.6173"`
+}
+
+// GeoResponse представляет ответ от geo сервиса
 type GeoResponse struct {
 	Addresses []Address `json:"addresses"`
 }
 
+// Address представляет структуру адреса
 type Address struct {
-	City   string `json:"city" example:"Москва"`
-	Street string `json:"street" example:"Арбат"`
+	Value string  `json:"value"`
+	Lat   float64 `json:"lat"`
+	Lng   float64 `json:"lng"`
 }
 
+// AuthRequest описывает запрос на auth сервис
 type AuthRequest struct {
 	Email    string `json:"email" example:"user@example.com"`
 	Password string `json:"password" example:"qwerty123"`
 }
 
+// AuthResponse представляет ответ от auth сервиса
 type AuthResponse struct {
-	Token string `json:"token" example:"eyJhbGciOi..."`
+	UserID    string `json:"user_id"`
+	Token     string `json:"token,omitempty"`
+	ExpiresAt int64  `json:"expires_at,omitempty"`
 }
 
+// UserResponse представляет ответ от user сервиса
+type UserResponse struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ErrorResponse представляет ответ с ошибкой
 type ErrorResponse struct {
-	Error  string `json:"error"`            // Человекочитаемое описание
-	Code   int    `json:"code"`             // HTTP-статус код
-	Detail string `json:"detail,omitempty"` // Технические детали (для разработки)
+	Error string `json:"error"`
+	Code  int    `json:"code,omitempty"`
 }
 
-func NewErrorResponse(statusCode int, err error) *ErrorResponse {
-	return &ErrorResponse{
-		Error:  http.StatusText(statusCode),
-		Code:   statusCode,
-		Detail: err.Error(),
-	}
+// ListUsersResponse представляет ответ со списком пользователей
+type ListUsersResponse struct {
+	Users      []UserResponse `json:"users"`
+	TotalCount int            `json:"total_count"`
+	Limit      int            `json:"limit,omitempty"`
+	Offset     int            `json:"offset,omitempty"`
 }

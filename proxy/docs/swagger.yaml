@@ -1,0 +1,325 @@
+definitions:
+  models.Address:
+    properties:
+      lat:
+        type: number
+      lng:
+        type: number
+      value:
+        type: string
+    type: object
+  models.AuthRequest:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      password:
+        example: qwerty123
+        type: string
+    type: object
+  models.AuthResponse:
+    properties:
+      expires_at:
+        type: integer
+      token:
+        type: string
+      user_id:
+        type: string
+    type: object
+  models.ErrorResponse:
+    properties:
+      code:
+        type: integer
+      error:
+        type: string
+    type: object
+  models.GeoGeocodeRequest:
+    properties:
+      lat:
+        example: "55.7558"
+        type: string
+      lng:
+        example: "37.6173"
+        type: string
+    type: object
+  models.GeoResponse:
+    properties:
+      addresses:
+        items:
+          $ref: '#/definitions/models.Address'
+        type: array
+    type: object
+  models.GeoSearchRequest:
+    properties:
+      query:
+        example: Москва
+        type: string
+    type: object
+  models.ListUsersResponse:
+    properties:
+      limit:
+        type: integer
+      offset:
+        type: integer
+      total_count:
+        type: integer
+      users:
+        items:
+          $ref: '#/definitions/models.UserResponse'
+        type: array
+    type: object
+  models.UserResponse:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: API Gateway for microservices
+  title: Proxy Service API
+  version: "1.0"
+paths:
+  /api/address/geocode:
+    post:
+      consumes:
+      - application/json
+      description: Получение адреса по координатам
+      parameters:
+      - description: Координаты для геокодирования
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.GeoGeocodeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.GeoResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Геокодирование адреса
+      tags:
+      - geo
+  /api/address/search:
+    post:
+      consumes:
+      - application/json
+      description: Поиск адресов по поисковому запросу
+      parameters:
+      - description: Поисковый запрос
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.GeoSearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.GeoResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Поиск адресов
+      tags:
+      - geo
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Авторизует пользователя в системе
+      parameters:
+      - description: Данные для авторизации (email и password)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.AuthRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Авторизация пользователя
+      tags:
+      - auth
+  /api/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Регистрирует нового пользователя в системе
+      parameters:
+      - description: Данные для регистрации (email и password минимум 8 символов)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.AuthRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      summary: Регистрация нового пользователя
+      tags:
+      - auth
+  /api/user/list:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает список пользователей с пагинацией
+      parameters:
+      - default: 10
+        description: Лимит
+        in: query
+        name: limit
+        type: integer
+      - default: 0
+        description: Смещение
+        in: query
+        name: offset
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.ListUsersResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Получение списка пользователей
+      tags:
+      - user
+  /api/user/profile:
+    get:
+      consumes:
+      - application/json
+      description: Возвращает профиль текущего авторизованного пользователя
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.UserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/models.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Получение профиля пользователя
+      tags:
+      - user
+schemes:
+- http
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

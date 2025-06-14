@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/ekomobile/dadata/v2/api/suggest"
 	"net/http"
 	"strings"
+
+	"github.com/ekomobile/dadata/v2/api/suggest"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/geo/internal/models"
 )
 
 func (g *GeoService) AddressSearch(args *models.SearchArgs, reply *[]*models.Address) error {
-	fmt.Println("AddressSearch вызван")
 	rawRes, err := g.api.Address(context.Background(), &suggest.RequestParams{Query: args.Query})
 	if err != nil {
 		return err
@@ -35,7 +35,6 @@ func (g *GeoService) AddressSearch(args *models.SearchArgs, reply *[]*models.Add
 }
 
 func (g *GeoService) GeoCode(args *models.GeoArgs, reply *[]*models.Address) error {
-	fmt.Println("GeoCode вызван")
 	httpClient := &http.Client{}
 	var data = strings.NewReader(fmt.Sprintf(`{"lat": %s, "lon": %s}`, args.Lat, args.Lng))
 

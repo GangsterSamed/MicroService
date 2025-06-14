@@ -1,30 +1,29 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	_ "github.com/lib/pq"
 	"log/slog"
+	"net"
 	"os"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/config"
 	logger2 "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/logger"
-	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/internal/controller"
-
-	_ "github.com/lib/pq"
-	_ "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/docs"
-	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/internal/repository"
-	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/internal/service"
+	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/shutdown"
 )
 
-// @title User Service API
-// @version 1.0
-// @description Микросервис управления пользователями
-// @contact.name Roman Malcev
-// @contact.email romanmalcev89665@gmail.com
-// @host localhost:8081
-// @BasePath /api/user
-// @schemes http
-// @securityDefinitions.apikey ApiKeyAuth
-// @in header
-// @name Authorization
 func main() {
+	if err := run(); err != nil {
+		slog.Error("Application failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Инициализация конфигурации
 	cfg, err := config.LoadUserConfig()
 	if err != nil {
@@ -33,43 +32,44 @@ func main() {
 	}
 
 	// Инициализация логгера
-	makeLogger := logger2.SetupLogger(cfg.LogLevel, cfg.LogFormat).With(
+	logger := logger2.SetupLogger(cfg.LogLevel, cfg.LogFormat).With(
 		"service", "user",
 		"version", "1.0",
 		"env", cfg.Environment,
 	)
-	slog.SetDefault(makeLogger)
+	slog.SetDefault(logger)
 
 	// Подключение к DB
-	db, err := initDatabase(cfg, makeLogger)
+	db, err := initDatabase(cfg, logger)
 	if err != nil {
-		makeLogger.Error("Database initialization failed", "error", err)
+		logger.Error("Database initialization failed", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			logger.Error("Failed to close database connection", "error", err)
+		}
+	}()
 
-	// Инициализация слоев
-	userRepo := repository.NewUserRepository(db)
-	userService := service.NewUserService(userRepo)
-	userCtrl, err := controller.NewUserController(userService)
+	// Создание и запуск gRPC сервера
+	grpcServer, err := setupGRPCServer(db, logger)
 	if err != nil {
-		makeLogger.Error("Failed to create controller", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to setup gRPC server: %w", err)
 	}
-
-	userGRPCServer, err := service.NewUserServer(userService)
+	listener, err := startGRPCServer(grpcServer, cfg.GRPCPort, logger)
 	if err != nil {
-		makeLogger.Error("Failed to create user gRPC server", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to start gRPC server: %w", err)
 	}
-
-	// Создание серверов
-	grpcServer := createGRPCServer(userGRPCServer, makeLogger)
-	httpServer := createHTTPServer(userCtrl, cfg, makeLogger)
-
-	// Запуск серверов
-	servers := startServers(grpcServer, httpServer, cfg, makeLogger)
+	defer func() {
+		if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			logger.Error("Failed to close listener", "error", err)
+		}
+	}()
 
 	// Ожидание сигналов завершения
-	waitForShutdown(servers, cfg.ShutdownTimeout, makeLogger)
+	if err := shutdown.WaitForShutdown(ctx, grpcServer, listener, cfg.ShutdownTimeout, logger); err != nil {
+		return fmt.Errorf("shutdown failed: %w", err)
+	}
+
+	return nil
 }

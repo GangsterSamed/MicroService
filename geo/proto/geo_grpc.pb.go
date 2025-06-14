@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v5.29.3
-// source: proto/geo.proto
+// source: new-repository/MicroService/geo/proto/geo.proto
 
 package proto
 
@@ -137,5 +137,5 @@ var GeoService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "proto/geo.proto",
+	Metadata: "new-repository/MicroService/geo/proto/geo.proto",
 }

@@ -7,8 +7,8 @@ option go_package = "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/
 // Сервис аутентификации и авторизации
 service AuthService {
   // Регистрация нового пользователя
-  rpc Register(RegisterRequest) returns (AuthResponse);
- 
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
   // Аутентификация пользователя
   rpc Login(LoginRequest) returns (AuthResponse);
 
@@ -22,6 +22,11 @@ message RegisterRequest {
   string password = 2;   // Пароль (минимум 8 символов)
 }
 
+// Ответ на регистрацию
+message RegisterResponse {
+  string user_id = 1;    // Идентификатор пользователя
+}
+
 // Запрос на вход
 message LoginRequest {
   string email = 1;      // Email пользователя
@@ -32,7 +37,7 @@ message LoginRequest {
 message AuthResponse {
   string token = 1;         // JWT токен
   string user_id = 2;       // Идентификатор пользователя
-  int64 expires_at = 3;     // Unix timestamp истечения токена
+  string expires_at = 3;    // Время истечения токена в формате ISO 8601
 }
 
 // Запрос на валидацию токена
@@ -44,7 +49,7 @@ message TokenRequest {
 message TokenResponse {
   bool valid = 1;        // Статус валидности
   string user_id = 2;    // Идентификатор пользователя
-  int64 expires_at = 3;  // Unix timestamp истечения токена
+  string expires_at = 3;  // Время истечения токена в формате ISO 8601
 }
 
 // Сообщение об ошибке (опционально)

@@ -1,91 +1,46 @@
 package main
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 	"google.golang.org/grpc"
 	"log/slog"
 	"net"
-	"net/http"
-	"os"
-	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/config"
 	logger2 "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/logger"
-	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/internal/controller"
+	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/internal/repository"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/internal/service"
+	pb "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/proto"
 )
 
-// Структура для хранения серверов
-type servers struct {
-	grpc *grpc.Server
-	http *http.Server
-}
+// Создание grpc сервера
+func setupGRPCServer(db *sql.DB, logger *slog.Logger) (*grpc.Server, error) {
+	// Инициализация слоев
+	userRepo := repository.NewUserRepository(db)
+	userService := service.NewUserService(userRepo)
+	userGRPCServer := service.NewUserServer(userService)
 
-func createGRPCServer(userServer *service.UserServer, logger *slog.Logger) *grpc.Server {
-	return grpc.NewServer(
+	grpcServer := grpc.NewServer(
 		grpc.UnaryInterceptor(logger2.GRPCLoggerInterceptor(logger)),
 	)
+	pb.RegisterUserServiceServer(grpcServer, userGRPCServer)
+
+	return grpcServer, nil
 }
 
-func createHTTPServer(userCtrl controller.UserController, cfg *config.UserConfig, logger *slog.Logger) *http.Server {
-	router := gin.New()
-	router.Use(gin.Recovery())
-	router.Use(logger2.GinLoggerMiddleware(logger))
-
-	// Swagger
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-
-	// Health check
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "OK"})
-	})
-
-	// API routes
-	api := router.Group("/api")
-	{
-		user := api.Group("/user")
-		user.Use(userCtrl.AuthMiddleware())
-		{
-			user.GET("/profile", userCtrl.GetUserProfileHandler)
-			user.GET("/list", userCtrl.ListUsersHandler)
-		}
-	}
-
-	return &http.Server{
-		Addr:         fmt.Sprintf(":%d", cfg.HTTPPort),
-		Handler:      router,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-		IdleTimeout:  cfg.IdleTimeout,
-	}
-}
-
-func startServers(grpcServer *grpc.Server, httpServer *http.Server, cfg *config.UserConfig, logger *slog.Logger) *servers {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.GRPCPort))
+// Запуск grpc сервера
+func startGRPCServer(server *grpc.Server, port int, logger *slog.Logger) (net.Listener, error) {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		logger.Error("Failed to listen gRPC", "error", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}
 
 	go func() {
-		logger.Info("Starting gRPC server", "port", cfg.GRPCPort)
-		if err := grpcServer.Serve(lis); err != nil {
+		logger.Info("Starting gRPC server", "port", port)
+		if err := server.Serve(listener); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			logger.Error("gRPC server failed", "error", err)
-			os.Exit(1)
 		}
 	}()
 
-	go func() {
-		logger.Info("Starting HTTP server", "port", cfg.HTTPPort)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("HTTP server failed", "error", err)
-			os.Exit(1)
-		}
-	}()
-
-	return &servers{
-		grpc: grpcServer,
-		http: httpServer,
-	}
+	return listener, nil
 }

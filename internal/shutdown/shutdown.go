@@ -1,4 +1,4 @@
-package main
+package shutdown
 
 import (
 	"context"
@@ -13,15 +13,15 @@ import (
 	"time"
 )
 
-func waitForShutdown(ctx context.Context, server *grpc.Server, listener net.Listener, timeout time.Duration, logger *slog.Logger) error {
+func WaitForShutdown(ctx context.Context, server *grpc.Server, listener net.Listener, timeout time.Duration, logger *slog.Logger) error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	select {
 	case sig := <-sigChan:
-		logger.Info("received shutdown signal", "signal", sig)
+		logger.Info("Received shutdown signal", "signal", sig)
 	case <-ctx.Done():
-		logger.Info("context cancelled, initiating shutdown")
+		logger.Info("Context cancelled, initiating shutdown")
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -29,7 +29,7 @@ func waitForShutdown(ctx context.Context, server *grpc.Server, listener net.List
 
 	// 1. Сначала закрываем listener
 	if err := listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
-		logger.Error("failed to close listener", "error", err)
+		logger.Error("Failed to close listener", "error", err)
 	}
 
 	// 2. Graceful shutdown сервера
@@ -41,7 +41,7 @@ func waitForShutdown(ctx context.Context, server *grpc.Server, listener net.List
 
 	select {
 	case <-stopped:
-		logger.Info("server stopped gracefully")
+		logger.Info("Server stopped gracefully")
 		return nil
 	case <-shutdownCtx.Done():
 		server.Stop()

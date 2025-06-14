@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/internal/models"
 )
 
@@ -27,7 +28,7 @@ func NewUserRepository(db *sql.DB) UserRepository {
 func (r *userRepo) CreateUser(ctx context.Context, email, passwordHash string) (*models.User, error) {
 	var user models.User
 	query := `INSERT INTO users (email, password_hash) VALUES ($1, $2) 
-              RETURNING id, email, password_hash, created_at`
+              RETURNING id, email, password_hash, created_at, updated_at`
 	err := r.db.QueryRowContext(ctx, query, email, passwordHash).Scan(
 		&user.ID,
 		&user.Email,
@@ -91,7 +92,7 @@ func (r *userRepo) ListUsers(ctx context.Context, limit, offset int) ([]*models.
 
 	// Получаем список пользователей
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, email, password_hash, created_at, updated_at FROM users LIMIT $1 OFFSET $2`,
+		`SELECT id, email, password_hash, created_at, updated_at FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
 		limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to query users: %w", err)
@@ -115,7 +116,7 @@ func (r *userRepo) ListUsers(ctx context.Context, limit, offset int) ([]*models.
 	if err := rows.Err(); err != nil {
 		return nil, 0, fmt.Errorf("rows error: %w", err)
 	}
-	
+
 	return users, total, nil
 }
 
@@ -132,11 +133,12 @@ func (r *userRepo) UpdateUser(ctx context.Context, userID, email, passwordHash s
               password_hash = COALESCE($3, password_hash),
               updated_at = NOW()
               WHERE id = $1
-              RETURNING id, email, created_at, updated_at`
+              RETURNING id, email, password_hash, created_at, updated_at`
 
 	err = tx.QueryRowContext(ctx, query, userID, email, passwordHash).Scan(
 		&user.ID,
 		&user.Email,
+		&user.PasswordHash,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)

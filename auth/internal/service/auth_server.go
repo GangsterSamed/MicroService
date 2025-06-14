@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/auth/proto"
 )
 
@@ -18,7 +19,7 @@ func NewAuthServer(authService AuthService, logger *slog.Logger) *AuthServer {
 		logger:  logger,
 	}
 }
-func (s *AuthServer) Register(ctx context.Context, req *proto.RegisterRequest) (*proto.AuthResponse, error) {
+func (s *AuthServer) Register(ctx context.Context, req *proto.RegisterRequest) (*proto.RegisterResponse, error) {
 	logger := s.logger.With(
 		"method", "Register",
 		"email", req.Email,
@@ -58,15 +59,12 @@ func (s *AuthServer) ValidateToken(ctx context.Context, req *proto.TokenRequest)
 	)
 	logger.Debug("Validating token")
 
-	userID, err := s.service.ValidateToken(req.Token)
+	resp, err := s.service.ValidateToken(ctx, req)
 	if err != nil {
 		logger.Warn("Token validation failed", "error", err)
 		return &proto.TokenResponse{Valid: false}, nil
 	}
 
-	logger.Info("Token validated successfully", "user_id", userID)
-	return &proto.TokenResponse{
-		Valid:  true,
-		UserId: userID,
-	}, nil
+	logger.Info("Token validated successfully", "user_id", resp.UserId)
+	return resp, nil
 }

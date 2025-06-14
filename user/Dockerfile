@@ -7,6 +7,5 @@ FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /user-service /app/user-service
 COPY --from=builder /app/user/migrations /app/migrations
-COPY --from=builder /app/user/docs /app/docs
-EXPOSE 50051
+EXPOSE 8080
 CMD ["/app/user-service"]

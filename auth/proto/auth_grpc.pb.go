@@ -23,7 +23,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AuthServiceClient interface {
 	// Регистрация нового пользователя
-	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*AuthResponse, error)
+	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 	// Аутентификация пользователя
 	Login(ctx context.Context, in *LoginRequest, opts ...grpc.CallOption) (*AuthResponse, error)
 	// Валидация JWT токена
@@ -38,8 +38,8 @@ func NewAuthServiceClient(cc grpc.ClientConnInterface) AuthServiceClient {
 	return &authServiceClient{cc}
 }
 
-func (c *authServiceClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*AuthResponse, error) {
-	out := new(AuthResponse)
+func (c *authServiceClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
+	out := new(RegisterResponse)
 	err := c.cc.Invoke(ctx, "/auth.AuthService/Register", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func (c *authServiceClient) ValidateToken(ctx context.Context, in *TokenRequest,
 // for forward compatibility
 type AuthServiceServer interface {
 	// Регистрация нового пользователя
-	Register(context.Context, *RegisterRequest) (*AuthResponse, error)
+	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	// Аутентификация пользователя
 	Login(context.Context, *LoginRequest) (*AuthResponse, error)
 	// Валидация JWT токена
@@ -82,7 +82,7 @@ type AuthServiceServer interface {
 type UnimplementedAuthServiceServer struct {
 }
 
-func (UnimplementedAuthServiceServer) Register(context.Context, *RegisterRequest) (*AuthResponse, error) {
+func (UnimplementedAuthServiceServer) Register(context.Context, *RegisterRequest) (*RegisterResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Register not implemented")
 }
 func (UnimplementedAuthServiceServer) Login(context.Context, *LoginRequest) (*AuthResponse, error) {

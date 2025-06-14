@@ -3,7 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
+
 	"golang.org/x/crypto/bcrypt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/internal/repository"
 	pb "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/proto"
@@ -27,6 +30,11 @@ func NewUserService(repo repository.UserRepository) UserService {
 }
 
 func (s *userService) CreateUser(ctx context.Context, email, passwordHash string) (*pb.UserResponse, error) {
+	// Проверка существования пользователя
+	if _, err := s.repo.GetUserByEmail(ctx, email); err == nil {
+		return nil, status.Error(codes.AlreadyExists, "user with this email already exists")
+	}
+
 	user, err := s.repo.CreateUser(ctx, email, passwordHash)
 	if err != nil {
 		return nil, err
@@ -71,9 +79,10 @@ func (s *userService) GetUserProfile(ctx context.Context, userID string) (*pb.Us
 }
 
 func (s *userService) ListUsers(ctx context.Context, limit, offset int32) (*pb.ListUsersResponse, error) {
+	// Получаем список пользователей
 	users, total, err := s.repo.ListUsers(ctx, int(limit), int(offset))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
 
 	response := &pb.ListUsersResponse{
@@ -93,6 +102,11 @@ func (s *userService) ListUsers(ctx context.Context, limit, offset int32) (*pb.L
 }
 
 func (s *userService) UpdateUser(ctx context.Context, userID, email, password string) (*pb.UserProfileResponse, error) {
+	// Проверка существования пользователя
+	if _, err := s.repo.GetUserByEmail(ctx, email); err != nil {
+		return nil, status.Error(codes.NotFound, "user not found")
+	}
+
 	// 1. Хеширование пароля
 	var passwordHash string
 	if password != "" {

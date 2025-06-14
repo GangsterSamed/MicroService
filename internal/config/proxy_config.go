@@ -11,6 +11,7 @@ type ProxyConfig struct {
 	GeoServiceAddr  string        `env:"GEO_SERVICE_ADDR" envDefault:"geo:50051"`
 	AuthServiceAddr string        `env:"AUTH_SERVICE_ADDR" envDefault:"auth:50051"`
 	UserServiceAddr string        `env:"USER_SERVICE_ADDR" envDefault:"user:50051"`
+	JWTSecret       string        `env:"JWT_SECRET" envDefault:"your-secret-key"`
 	ReadTimeout     time.Duration `env:"PROXY_READ_TIMEOUT" envDefault:"10s"`
 	WriteTimeout    time.Duration `env:"PROXY_WRITE_TIMEOUT" envDefault:"30s"`
 	IdleTimeout     time.Duration `env:"PROXY_IDLE_TIMEOUT" envDefault:"60s"`
