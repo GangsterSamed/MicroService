@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
@@ -19,26 +18,33 @@ import (
 func initUserClient(cfg *config.AuthConfig, logger *slog.Logger) (*grpc.ClientConn, error) {
 	logger.Info("connecting to user service", "address", cfg.UserServiceAddr)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.GRPCDialTimeout)
 	defer cancel()
 
 	conn, err := grpc.DialContext(ctx, cfg.UserServiceAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithConnectParams(grpc.ConnectParams{
-			MinConnectTimeout: 30 * time.Second,
+			MinConnectTimeout: cfg.GRPCMinConnectTimeout,
 			Backoff: backoff.Config{
-				BaseDelay:  2.0 * time.Second,
-				Multiplier: 1.6,
-				MaxDelay:   60 * time.Second,
+				BaseDelay:  cfg.GRPCBackoffBaseDelay,
+				Multiplier: cfg.GRPCBackoffMultiplier,
+				MaxDelay:   cfg.GRPCBackoffMaxDelay,
 			},
 		}),
+		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
 		grpc.WithBlock(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to user service: %w", err)
 	}
 
-	logger.Info("successfully connected to user service")
+	logger.Info("successfully connected to user service with connection pooling",
+		"dial_timeout", cfg.GRPCDialTimeout,
+		"min_connect_timeout", cfg.GRPCMinConnectTimeout,
+		"backoff_base_delay", cfg.GRPCBackoffBaseDelay,
+		"backoff_max_delay", cfg.GRPCBackoffMaxDelay,
+		"backoff_multiplier", cfg.GRPCBackoffMultiplier,
+	)
 	return conn, nil
 }
 

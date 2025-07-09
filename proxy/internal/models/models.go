@@ -6,13 +6,13 @@ import (
 
 // GeoSearchRequest описывает запрос на поиск адреса
 type GeoSearchRequest struct {
-	Query string `json:"query" example:"Москва"`
+	Query string `json:"query" binding:"required" example:"Москва"`
 }
 
 // GeoGeocodeRequest описывает запрос на геокодирование
 type GeoGeocodeRequest struct {
-	Lat string `json:"lat" example:"55.7558"`
-	Lng string `json:"lng" example:"37.6173"`
+	Lat string `json:"lat" binding:"required,numeric,gte=-90,lte=90" example:"55.7558"`
+	Lng string `json:"lng" binding:"required,numeric,gte=-180,lte=180" example:"37.6173"`
 }
 
 // GeoResponse представляет ответ от geo сервиса
@@ -23,14 +23,14 @@ type GeoResponse struct {
 // Address представляет структуру адреса
 type Address struct {
 	Value string  `json:"value"`
-	Lat   float64 `json:"lat"`
-	Lng   float64 `json:"lng"`
+	Lat   float64 `json:"lat" binding:"gte=-90,lte=90"`
+	Lng   float64 `json:"lng" binding:"gte=-180,lte=180"`
 }
 
 // AuthRequest описывает запрос на auth сервис
 type AuthRequest struct {
-	Email    string `json:"email" example:"user@example.com"`
-	Password string `json:"password" example:"qwerty123"`
+	Email    string `json:"email" binding:"required,email" example:"user@example.com"`
+	Password string `json:"password" binding:"required,min=8" example:"qwerty123"`
 }
 
 // AuthResponse представляет ответ от auth сервиса
@@ -42,7 +42,7 @@ type AuthResponse struct {
 
 // UserResponse представляет ответ от user сервиса
 type UserResponse struct {
-	ID        string    `json:"id"`
+	ID        string    `json:"id" binding:"required"`
 	Email     string    `json:"email"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -58,6 +58,6 @@ type ErrorResponse struct {
 type ListUsersResponse struct {
 	Users      []UserResponse `json:"users"`
 	TotalCount int            `json:"total_count"`
-	Limit      int            `json:"limit,omitempty"`
-	Offset     int            `json:"offset,omitempty"`
+	Limit      int            `json:"limit,omitempty" binding:"min=1,max=100"`
+	Offset     int            `json:"offset,omitempty" binding:"min=0"`
 }

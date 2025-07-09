@@ -1,29 +1,88 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/config"
 	logger2 "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/logger"
-	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/handler"
-	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/service"
+	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/handlers"
+	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/middleware"
 )
 
-func startHTTPServer(cfg *config.ProxyConfig, proxyService service.ProxyService, logger *slog.Logger) *http.Server {
+func healthCheckHandler(proxyService handlers.ProxyServiceInterface) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		statuses := map[string]string{
+			"proxy": "OK",
+			"geo":   "UNKNOWN",
+			"auth":  "UNKNOWN",
+			"user":  "UNKNOWN",
+		}
+
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+
+		// Проверяем geo
+		if err := proxyService.PingService(ctx, "geo"); err != nil {
+			statuses["geo"] = "FAIL"
+		} else {
+			statuses["geo"] = "OK"
+		}
+
+		// Проверяем auth
+		if err := proxyService.PingService(ctx, "auth"); err != nil {
+			statuses["auth"] = "FAIL"
+		} else {
+			statuses["auth"] = "OK"
+		}
+
+		// Проверяем user
+		if err := proxyService.PingService(ctx, "user"); err != nil {
+			statuses["user"] = "FAIL"
+		} else {
+			statuses["user"] = "OK"
+		}
+
+		// Если хотя бы один сервис не OK, возвращаем 500
+		statusCode := http.StatusOK
+		for _, name := range []string{"geo", "auth", "user"} {
+			if statuses[name] != "OK" {
+				statusCode = http.StatusInternalServerError
+				break
+			}
+		}
+
+		c.JSON(statusCode, statuses)
+	}
+}
+
+func startHTTPServer(cfg *config.ProxyConfig, proxyService handlers.ProxyServiceInterface, logger *slog.Logger) *http.Server {
 	router := gin.New()
+
+	// Используем middleware из handler
+	router.Use(middleware.RequestIDMiddleware())
 	router.Use(gin.Recovery())
 	router.Use(logger2.GinLoggerMiddleware(logger))
+	router.Use(middleware.PrometheusMiddleware())
+	router.Use(middleware.CORSMiddleware())
+	router.Use(middleware.RateLimitMiddleware(60, time.Minute))
+	router.Use(middleware.CacheMiddleware())
+
+	// Prometheus metrics endpoint
+	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// Swagger
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler, ginSwagger.URL("/swagger/doc.json")))
 
 	// Initialize proxy handler
-	proxyHandler, err := handler.NewProxyHandler(proxyService, logger)
+	proxyHandler, err := handlers.NewProxyHandler(proxyService, logger)
 	if err != nil {
 		logger.Error("Failed to initialize proxy handler", "error", err)
 		return nil
@@ -56,9 +115,7 @@ func startHTTPServer(cfg *config.ProxyConfig, proxyService service.ProxyService,
 	}
 
 	// Health check
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "OK"})
-	})
+	router.GET("/health", healthCheckHandler(proxyService))
 
 	srv := &http.Server{
 		Addr:         ":" + strconv.Itoa(cfg.HTTPPort),

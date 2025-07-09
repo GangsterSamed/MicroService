@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/shutdown"
 
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/geo/internal/provider"
@@ -40,7 +41,10 @@ func run() error {
 	slog.SetDefault(logger)
 
 	// 3. Инициализация Redis
-	redisClient := initRedis(cfg, logger)
+	redisClient, err := initRedis(cfg, logger)
+	if err != nil {
+		return fmt.Errorf("failed to init Redis: %w", err)
+	}
 	defer func() {
 		if err := redisClient.Close(); err != nil {
 			logger.Error("failed to close redis", "error", err)

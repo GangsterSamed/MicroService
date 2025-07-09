@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	_ "github.com/lib/pq"
 	"log/slog"
 	"net"
 	"os"
+
+	_ "github.com/lib/pq"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/config"
 	logger2 "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/logger"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/shutdown"
@@ -27,8 +28,7 @@ func run() error {
 	// Инициализация конфигурации
 	cfg, err := config.LoadUserConfig()
 	if err != nil {
-		slog.Error("Failed to load config", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Инициализация логгера
@@ -42,8 +42,7 @@ func run() error {
 	// Подключение к DB
 	db, err := initDatabase(cfg, logger)
 	if err != nil {
-		logger.Error("Database initialization failed", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("database initialization failed: %w", err)
 	}
 	defer func() {
 		if err := db.Close(); err != nil {

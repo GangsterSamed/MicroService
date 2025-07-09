@@ -1,7 +1,8 @@
 package config
 
 import (
-	"errors"
+	"fmt"
+
 	"github.com/caarlos0/env/v9"
 )
 
@@ -9,11 +10,14 @@ import (
 func LoadAuthConfig() (*AuthConfig, error) {
 	var cfg AuthConfig
 	if err := env.Parse(&cfg); err != nil {
-		return nil, errors.New("load env fail")
+		return nil, fmt.Errorf("failed to parse env config: %w", err)
 	}
-	if len(cfg.JWTSecret) < 32 {
-		return nil, errors.New("JWT_SECRET must be at least 32 characters long")
+
+	// Валидируем конфигурацию
+	if err := validateAuthConfig(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
+
 	return &cfg, nil
 }
 
@@ -21,11 +25,14 @@ func LoadAuthConfig() (*AuthConfig, error) {
 func LoadGeoConfig() (*GeoConfig, error) {
 	var cfg GeoConfig
 	if err := env.Parse(&cfg); err != nil {
-		return nil, errors.New("load env fail")
+		return nil, fmt.Errorf("failed to parse env config: %w", err)
 	}
-	if cfg.DadataAPIKey == "" || cfg.DadataSecretKey == "" {
-		return nil, errors.New("DADATA_API_KEY and DADATA_SECRET_KEY are required")
+
+	// Валидируем конфигурацию
+	if err := validateGeoConfig(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
+
 	return &cfg, nil
 }
 
@@ -33,8 +40,14 @@ func LoadGeoConfig() (*GeoConfig, error) {
 func LoadUserConfig() (*UserConfig, error) {
 	var cfg UserConfig
 	if err := env.Parse(&cfg); err != nil {
-		return nil, errors.New("load env fail")
+		return nil, fmt.Errorf("failed to parse env config: %w", err)
 	}
+
+	// Валидируем конфигурацию
+	if err := validateUserConfig(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
 	return &cfg, nil
 }
 
@@ -42,7 +55,13 @@ func LoadUserConfig() (*UserConfig, error) {
 func LoadProxyConfig() (*ProxyConfig, error) {
 	var cfg ProxyConfig
 	if err := env.Parse(&cfg); err != nil {
-		return nil, errors.New("load env fail")
+		return nil, fmt.Errorf("failed to parse env config: %w", err)
 	}
+
+	// Валидируем конфигурацию
+	if err := validateProxyConfig(&cfg); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
 	return &cfg, nil
 }

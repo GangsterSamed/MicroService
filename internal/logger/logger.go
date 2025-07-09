@@ -30,7 +30,7 @@ func SetupLogger(logLevel string, logFormat string) *slog.Logger {
 	return logger
 }
 
-// GinLoggerMiddleware возвращает middleware для логирования HTTP-запросов
+// GinLoggerMiddleware возвращает interceptor для логирования HTTP-запросов
 func GinLoggerMiddleware(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()

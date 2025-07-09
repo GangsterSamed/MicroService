@@ -7,6 +7,7 @@ import (
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/config"
 	logger2 "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/logger"
 	_ "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/docs"
+	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/handlers"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/service"
 )
 
@@ -41,11 +42,13 @@ func main() {
 	slog.SetDefault(logger)
 
 	// 3. Инициализация сервиса
-	proxyService, err := service.NewProxyService(
+	var proxyService handlers.ProxyServiceInterface
+	proxyService, err = service.NewProxyService(
 		cfg.GeoServiceAddr,
 		cfg.AuthServiceAddr,
 		cfg.UserServiceAddr,
 		logger,
+		cfg,
 	)
 	if err != nil {
 		logger.Error("Failed to create proxy service", "error", err)

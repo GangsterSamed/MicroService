@@ -21,4 +21,10 @@ type UserConfig struct {
 	ShutdownTimeout time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"10s"`
 	LogLevel        string        `env:"LOG_LEVEL" envDefault:"info"`
 	LogFormat       string        `env:"LOG_FORMAT" envDefault:"json"`
+
+	// Database connection pooling settings
+	DBMaxOpenConns    int           `env:"DB_MAX_OPEN_CONNS" envDefault:"25"`
+	DBMaxIdleConns    int           `env:"DB_MAX_IDLE_CONNS" envDefault:"5"`
+	DBConnMaxLifetime time.Duration `env:"DB_CONN_MAX_LIFETIME" envDefault:"5m"`
+	DBConnMaxIdleTime time.Duration `env:"DB_CONN_MAX_IDLE_TIME" envDefault:"5m"`
 }

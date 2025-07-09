@@ -11,6 +11,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - microservice-net
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "user"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -19,6 +24,11 @@ services:
       - redis_data:/data
     networks:
       - microservice-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
 
   # User Service
   user:
@@ -36,10 +46,21 @@ services:
       LOG_LEVEL: ${LOG_LEVEL}
       GRPC_CONNECT_TIMEOUT: 30s
       GRPC_SERVER_START_DELAY: 5s
+      # Database connection pooling
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS}
+      DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME}
+      DB_CONN_MAX_IDLE_TIME: ${DB_CONN_MAX_IDLE_TIME}
     networks:
       - microservice-net
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
 
   # Auth Service
   auth:
@@ -52,10 +73,24 @@ services:
       USER_SERVICE_ADDR: user:50051
       GRPC_PORT: 50051
       GRPC_CONNECT_TIMEOUT: 30s
+      # gRPC connection pooling
+      GRPC_DIAL_TIMEOUT: ${GRPC_DIAL_TIMEOUT}
+      GRPC_MIN_CONNECT_TIMEOUT: ${GRPC_MIN_CONNECT_TIMEOUT}
+      GRPC_BACKOFF_BASE_DELAY: ${GRPC_BACKOFF_BASE_DELAY}
+      GRPC_BACKOFF_MAX_DELAY: ${GRPC_BACKOFF_MAX_DELAY}
+      GRPC_BACKOFF_MULTIPLIER: ${GRPC_BACKOFF_MULTIPLIER}
+      GRPC_MAX_RETRIES: ${GRPC_MAX_RETRIES}
+      DB_NAME: users
     networks:
       - microservice-net
     depends_on:
-      - user
+      user:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
 
   # Geo Service
   geo:
@@ -70,11 +105,29 @@ services:
       REDIS_ADDR: redis:6379
       LOG_LEVEL: ${LOG_LEVEL}
       GRPC_CONNECT_TIMEOUT: 30s
+      # Redis connection pooling
+      REDIS_POOL_SIZE: ${REDIS_POOL_SIZE}
+      REDIS_MIN_IDLE_CONNS: ${REDIS_MIN_IDLE_CONNS}
+      REDIS_MAX_RETRIES: ${REDIS_MAX_RETRIES}
+      REDIS_DIAL_TIMEOUT: ${REDIS_DIAL_TIMEOUT}
+      REDIS_READ_TIMEOUT: ${REDIS_READ_TIMEOUT}
+      REDIS_WRITE_TIMEOUT: ${REDIS_WRITE_TIMEOUT}
+      # Cache settings
+      CACHE_TTL: ${CACHE_TTL}
+      MAX_ADDRESS_RESULTS: ${MAX_ADDRESS_RESULTS}
+      DB_NAME: users
     networks:
       - microservice-net
     depends_on:
-      - auth
-      - redis
+      auth:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
 
   # Proxy Service (полностью сохранена конфигурация)
   proxy:
@@ -91,12 +144,75 @@ services:
       LOG_LEVEL: ${LOG_LEVEL}
       GRPC_CONNECT_TIMEOUT: 30s
       JWT_SECRET: ${JWT_SECRET:-your-secret-key}
+      # gRPC connection pooling
+      GRPC_DIAL_TIMEOUT: ${GRPC_DIAL_TIMEOUT}
+      GRPC_MIN_CONNECT_TIMEOUT: ${GRPC_MIN_CONNECT_TIMEOUT}
+      GRPC_BACKOFF_BASE_DELAY: ${GRPC_BACKOFF_BASE_DELAY}
+      GRPC_BACKOFF_MAX_DELAY: ${GRPC_BACKOFF_MAX_DELAY}
+      GRPC_BACKOFF_MULTIPLIER: ${GRPC_BACKOFF_MULTIPLIER}
+      GRPC_MAX_RETRIES: ${GRPC_MAX_RETRIES}
+      # Service timeouts
+      PROXY_READ_TIMEOUT: ${PROXY_READ_TIMEOUT}
+      PROXY_WRITE_TIMEOUT: ${PROXY_WRITE_TIMEOUT}
+      PROXY_IDLE_TIMEOUT: ${PROXY_IDLE_TIMEOUT}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT}
+      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-30s}
+      # Redis caching settings
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_POOL_SIZE: ${REDIS_POOL_SIZE}
+      REDIS_MIN_IDLE_CONNS: ${REDIS_MIN_IDLE_CONNS}
+      REDIS_MAX_RETRIES: ${REDIS_MAX_RETRIES}
+      REDIS_DIAL_TIMEOUT: ${REDIS_DIAL_TIMEOUT}
+      REDIS_READ_TIMEOUT: ${REDIS_READ_TIMEOUT}
+      REDIS_WRITE_TIMEOUT: ${REDIS_WRITE_TIMEOUT}
+      # Cache settings
+      CACHE_ENABLED: ${CACHE_ENABLED:-true}
+      CACHE_TTL: ${CACHE_TTL}
+      CACHE_MAX_SIZE: ${CACHE_MAX_SIZE:-10000}
     networks:
       - microservice-net
     depends_on:
-      - geo
-      - auth
-      - user
+      geo:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+      user:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - microservice-net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "9090"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - microservice-net
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "3000"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
 
 networks:
   microservice-net:
@@ -108,3 +224,5 @@ volumes:
     name: geo-postgres-data
   redis_data:
     name: geo-redis-data
+  prometheus_data:
+    name: geo-prometheus-data

@@ -1,9 +1,12 @@
 package provider
 
 import (
+	"net/http"
+	"net/url"
+	"time"
+
 	"github.com/ekomobile/dadata/v2/api/suggest"
 	"github.com/ekomobile/dadata/v2/client"
-	"net/url"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/geo/internal/models"
 )
 
@@ -30,8 +33,22 @@ func NewGeoService(apiKey, secretKey string) *GeoService {
 		SecretKeyValue: secretKey,
 	}
 
+	// Создаем HTTP клиент с connection pooling
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+			DisableCompression:  false,
+		},
+	}
+
 	api := suggest.Api{
-		Client: client.NewClient(endpointUrl, client.WithCredentialProvider(&creds)),
+		Client: client.NewClient(endpointUrl,
+			client.WithCredentialProvider(&creds),
+			client.WithHttpClient(httpClient),
+		),
 	}
 
 	return &GeoService{

@@ -2,58 +2,86 @@ package service
 
 import (
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"google.golang.org/grpc"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/encoding/protojson"
 
+	"google.golang.org/grpc/backoff"
 	authProto "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/auth/proto"
 	geoProto "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/geo/proto"
-	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/errors"
+	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/config"
+	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/cache"
+	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/handlers"
 	userProto "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/proto"
 )
 
-type ProxyService interface {
-	ForwardRequest(ctx context.Context, serviceName, path string, body []byte, md metadata.MD) ([]byte, int, error)
-	Close() error
-}
-
 type proxyService struct {
-	geoClient  geoProto.GeoServiceClient
-	authClient authProto.AuthServiceClient
-	userClient userProto.UserServiceClient
-	logger     *slog.Logger
-	geoConn    *grpc.ClientConn
-	authConn   *grpc.ClientConn
-	userConn   *grpc.ClientConn
+	authHandler  *handlers.AuthHandler
+	userHandler  *handlers.UserHandler
+	geoHandler   *handlers.GeoHandler
+	cacheManager *CacheManager
+	logger       *slog.Logger
+	geoConn      *grpc.ClientConn
+	authConn     *grpc.ClientConn
+	userConn     *grpc.ClientConn
+	cfg          *config.ProxyConfig
 }
 
 // NewProxyService создает новый экземпляр прокси-сервиса
-func NewProxyService(geoAddr string, authAddr string, userAddr string, logger *slog.Logger) (ProxyService, error) {
-	// Создаем соединения с сервисами
-	geoConn, err := grpc.Dial(geoAddr, grpc.WithInsecure())
+func NewProxyService(geoAddr string, authAddr string, userAddr string, logger *slog.Logger, cfg *config.ProxyConfig) (handlers.ProxyServiceInterface, error) {
+	// Инициализируем кеш сервис
+	cacheService, err := cache.NewCacheService(
+		cfg.RedisAddr,
+		cfg.RedisPassword,
+		cfg.RedisPoolSize,
+		cfg.RedisMinIdleConns,
+		cfg.RedisMaxRetries,
+		cfg.RedisDialTimeout,
+		cfg.RedisReadTimeout,
+		cfg.RedisWriteTimeout,
+		logger,
+	)
 	if err != nil {
+		return nil, fmt.Errorf("failed to initialize cache service: %v", err)
+	}
+
+	// Настройки gRPC connection pooling
+	dialOptions := []grpc.DialOption{
+		grpc.WithInsecure(),
+		grpc.WithConnectParams(grpc.ConnectParams{
+			MinConnectTimeout: cfg.GRPCMinConnectTimeout,
+			Backoff: backoff.Config{
+				BaseDelay:  cfg.GRPCBackoffBaseDelay,
+				Multiplier: cfg.GRPCBackoffMultiplier,
+				MaxDelay:   cfg.GRPCBackoffMaxDelay,
+			},
+		}),
+		grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+	}
+
+	// Создаем соединения с сервисами
+	geoConn, err := grpc.Dial(geoAddr, dialOptions...)
+	if err != nil {
+		cacheService.Close()
 		return nil, fmt.Errorf("failed to connect to geo service: %v", err)
 	}
 
-	authConn, err := grpc.Dial(authAddr, grpc.WithInsecure())
+	authConn, err := grpc.Dial(authAddr, dialOptions...)
 	if err != nil {
+		cacheService.Close()
 		geoConn.Close()
 		return nil, fmt.Errorf("failed to connect to auth service: %v", err)
 	}
 
-	userConn, err := grpc.Dial(userAddr, grpc.WithInsecure())
+	userConn, err := grpc.Dial(userAddr, dialOptions...)
 	if err != nil {
+		cacheService.Close()
 		geoConn.Close()
 		authConn.Close()
 		return nil, fmt.Errorf("failed to connect to user service: %v", err)
@@ -64,18 +92,48 @@ func NewProxyService(geoAddr string, authAddr string, userAddr string, logger *s
 	authClient := authProto.NewAuthServiceClient(authConn)
 	userClient := userProto.NewUserServiceClient(userConn)
 
+	// Создаем обработчики
+	authHandler := handlers.NewAuthHandler(authClient, logger)
+	userHandler := handlers.NewUserHandler(userClient, logger)
+	geoHandler := handlers.NewGeoHandler(geoClient, logger)
+	cacheManager := NewCacheManager(cacheService, logger, cfg)
+
+	logger.Info("gRPC connections established with connection pooling",
+		"geo_addr", geoAddr,
+		"auth_addr", authAddr,
+		"user_addr", userAddr,
+		"min_connect_timeout", cfg.GRPCMinConnectTimeout,
+		"backoff_base_delay", cfg.GRPCBackoffBaseDelay,
+		"backoff_max_delay", cfg.GRPCBackoffMaxDelay,
+		"backoff_multiplier", cfg.GRPCBackoffMultiplier,
+		"cache_enabled", cfg.CacheEnabled,
+	)
+
 	return &proxyService{
-		geoClient:  geoClient,
-		authClient: authClient,
-		userClient: userClient,
-		logger:     logger,
-		geoConn:    geoConn,
-		authConn:   authConn,
-		userConn:   userConn,
+		authHandler:  authHandler,
+		userHandler:  userHandler,
+		geoHandler:   geoHandler,
+		cacheManager: cacheManager,
+		logger:       logger,
+		geoConn:      geoConn,
+		authConn:     authConn,
+		userConn:     userConn,
+		cfg:          cfg,
 	}, nil
 }
 
 func (s *proxyService) ForwardRequest(ctx context.Context, serviceName string, method string, reqBody []byte, headers metadata.MD) ([]byte, int, error) {
+	// Добавляем timeout для запроса
+	ctx, cancel := context.WithTimeout(ctx, s.cfg.RequestTimeout)
+	defer cancel()
+
+	// Проверяем кеш для кешируемых методов
+	if s.cacheManager.ShouldCheckCache(serviceName, method, headers) {
+		if cachedResponse, cachedStatus, err := s.cacheManager.GetCachedResponse(ctx, serviceName, method, reqBody, headers); err == nil {
+			return cachedResponse, cachedStatus, nil
+		}
+	}
+
 	// Добавляем заголовки в контекст всегда
 	if len(headers) > 0 {
 		ctx = metadata.NewOutgoingContext(ctx, headers)
@@ -90,53 +148,27 @@ func (s *proxyService) ForwardRequest(ctx context.Context, serviceName string, m
 		}
 	}
 
+	var response []byte
+	var statusCode int
+	var err error
+
 	switch serviceName {
 	case "geo":
-		return s.handleGeoRequest(ctx, method, reqBody)
+		response, statusCode, err = s.geoHandler.HandleGeoRequest(ctx, method, reqBody)
 	case "auth":
-		return s.handleAuthRequest(ctx, method, reqBody)
+		response, statusCode, err = s.authHandler.HandleAuthRequest(ctx, method, reqBody)
 	case "user":
-		return s.handleUserRequest(ctx, method, reqBody)
+		response, statusCode, err = s.userHandler.HandleUserRequest(ctx, method, reqBody)
 	default:
 		return nil, http.StatusBadRequest, status.Error(codes.InvalidArgument, "invalid service name")
 	}
-}
 
-// extractJWTToken извлекает JWT токен из строки, обрабатывая base64 и JSON форматы
-func (s *proxyService) extractJWTToken(token string) (string, error) {
-	s.logger.Info("Extracting JWT token", "input", token)
-
-	// Убираем префикс Bearer если он есть
-	token = strings.TrimPrefix(token, "Bearer ")
-	s.logger.Info("Token after removing Bearer prefix", "token", token)
-
-	// Пытаемся декодировать base64
-	decoded, err := base64.StdEncoding.DecodeString(token)
-	if err != nil {
-		s.logger.Info("Token is not base64, using as is", "token", token)
-		return token, nil
-	}
-	s.logger.Info("Successfully decoded base64", "decoded", string(decoded))
-
-	// Пытаемся распарсить JSON
-	var tokenData struct {
-		Token string `json:"token"`
-	}
-	if err := json.Unmarshal(decoded, &tokenData); err != nil {
-		s.logger.Error("Failed to parse token JSON", "error", err)
-		return "", fmt.Errorf("invalid token format: %w", err)
-	}
-	s.logger.Info("Successfully parsed JSON", "tokenData", tokenData)
-
-	// Если нашли токен в JSON, возвращаем его
-	if tokenData.Token != "" {
-		s.logger.Info("Found token in JSON, returning it", "token", tokenData.Token)
-		return tokenData.Token, nil
+	// Кешируем успешные ответы
+	if err == nil && s.cacheManager.ShouldCacheResponse(serviceName, method, statusCode, headers) {
+		s.cacheManager.CacheResponse(ctx, serviceName, method, reqBody, headers, response, statusCode)
 	}
 
-	// Если токен не найден в JSON, возвращаем ошибку
-	s.logger.Error("No token found in JSON")
-	return "", fmt.Errorf("no token found in JSON")
+	return response, statusCode, err
 }
 
 // validateAndPrepareContext validates the token and prepares the context with proper metadata
@@ -151,12 +183,12 @@ func (s *proxyService) validateAndPrepareContext(ctx context.Context) (context.C
 	}
 
 	s.logger.Info("Received metadata in context",
-		slog.Any("metadata", md),
+		"metadata", md,
 	)
 
 	tokens := md.Get("authorization")
 	s.logger.Info("Authorization tokens from metadata",
-		slog.Any("tokens", tokens),
+		"tokens", tokens,
 	)
 	if len(tokens) == 0 {
 		s.logger.Warn("No authorization token in metadata")
@@ -164,20 +196,20 @@ func (s *proxyService) validateAndPrepareContext(ctx context.Context) (context.C
 	}
 
 	// Извлекаем JWT токен
-	jwtToken, err := s.extractJWTToken(tokens[0])
+	jwtToken, err := s.authHandler.ExtractJWTToken(tokens[0])
 	if err != nil {
 		s.logger.Error("Failed to extract JWT token",
-			slog.String("error", err.Error()),
-			slog.String("token", tokens[0]),
+			"error", err.Error(),
+			"token", tokens[0],
 		)
 		return nil, status.Error(codes.Unauthenticated, "invalid token format")
 	}
 
 	// Валидируем токен
 	s.logger.Info("Validating token", "token", jwtToken)
-	resp, err := s.authClient.ValidateToken(ctx, &authProto.TokenRequest{Token: jwtToken})
+	resp, err := s.authHandler.ValidateToken(ctx, jwtToken)
 	if err != nil {
-		s.logger.Error("ValidateToken error", "err", err)
+		s.logger.Error("ValidateToken error", "error", err)
 		return nil, status.Error(codes.Unauthenticated, "invalid token")
 	}
 	if !resp.Valid {
@@ -195,140 +227,28 @@ func (s *proxyService) validateAndPrepareContext(ctx context.Context) (context.C
 	// Объединяем существующие метаданные с новыми
 	if existingMD, ok := metadata.FromOutgoingContext(ctx); ok {
 		s.logger.Info("Found existing outgoing metadata, merging with new metadata",
-			slog.Any("existing_metadata", existingMD),
+			"existing_metadata", existingMD,
 		)
 		newMD = metadata.Join(existingMD, newMD)
 	}
 
 	s.logger.Info("Created new context with metadata",
-		slog.Any("new_metadata", newMD),
+		"new_metadata", newMD,
 	)
 
 	return metadata.NewOutgoingContext(ctx, newMD), nil
 }
 
-func (s *proxyService) handleGeoRequest(ctx context.Context, method string, body []byte) ([]byte, int, error) {
-	s.logger.Info("Starting handleGeoRequest", "method", method)
-
-	switch method {
-	case "/api/address/search":
-		s.logger.Info("Searching address")
-		var req geoProto.SearchRequest
-		if err := protojson.Unmarshal(body, &req); err != nil {
-			return nil, http.StatusBadRequest, status.Error(codes.InvalidArgument, "invalid request body")
-		}
-		resp, err := s.geoClient.AddressSearch(ctx, &req)
-		return errors.MarshalResponse(resp, err)
-
-	case "/api/address/geocode":
-		s.logger.Info("Geocoding address")
-		var req geoProto.GeoRequest
-		if err := protojson.Unmarshal(body, &req); err != nil {
-			return nil, http.StatusBadRequest, status.Error(codes.InvalidArgument, "invalid request body")
-		}
-		resp, err := s.geoClient.GeoCode(ctx, &req)
-		return errors.MarshalResponse(resp, err)
-
-	default:
-		s.logger.Warn("Method not implemented", "method", method)
-		return nil, http.StatusNotImplemented, status.Error(codes.Unimplemented, "method not implemented")
-	}
-}
-
-func (s *proxyService) handleAuthRequest(ctx context.Context, method string, body []byte) ([]byte, int, error) {
-	switch method {
-	case "/api/auth/register":
-		var req authProto.RegisterRequest
-		if err := protojson.Unmarshal(body, &req); err != nil {
-			return nil, http.StatusBadRequest, status.Error(codes.InvalidArgument, "invalid request body")
-		}
-		resp, err := s.authClient.Register(ctx, &req)
-		if err != nil {
-			return nil, http.StatusInternalServerError, err
-		}
-		// Сериализуем ответ в JSON
-		jsonResp, err := protojson.Marshal(resp)
-		if err != nil {
-			return nil, http.StatusInternalServerError, fmt.Errorf("failed to marshal response: %w", err)
-		}
-		return jsonResp, http.StatusCreated, nil
-
-	case "/api/auth/login":
-		var req authProto.LoginRequest
-		if err := protojson.Unmarshal(body, &req); err != nil {
-			return nil, http.StatusBadRequest, status.Error(codes.InvalidArgument, "invalid request body")
-		}
-		resp, err := s.authClient.Login(ctx, &req)
-		if err != nil {
-			return nil, http.StatusInternalServerError, err
-		}
-		// Сериализуем ответ в JSON
-		jsonResp, err := protojson.Marshal(resp)
-		if err != nil {
-			return nil, http.StatusInternalServerError, fmt.Errorf("failed to marshal response: %w", err)
-		}
-		return jsonResp, http.StatusOK, nil
-
-	default:
-		return nil, http.StatusNotImplemented, status.Error(codes.Unimplemented, "method not implemented")
-	}
-}
-
-func (s *proxyService) handleUserRequest(ctx context.Context, method string, body []byte) ([]byte, int, error) {
-	s.logger.Info("Starting handleUserRequest", "method", method)
-
-	switch method {
-	case "/api/user/profile":
-		s.logger.Info("Getting user profile")
-		resp, err := s.userClient.GetUserProfile(ctx, &userProto.GetUserRequest{})
-		return errors.MarshalResponse(resp, err)
-
-	case "/api/user/list":
-		s.logger.Info("Getting user list")
-		// Получаем параметры пагинации из метаданных
-		md, ok := metadata.FromOutgoingContext(ctx)
-		if !ok {
-			return nil, http.StatusBadRequest, status.Error(codes.InvalidArgument, "no metadata in context")
-		}
-
-		// Получаем limit и offset из query параметров
-		limitStr := md.Get("limit")
-		offsetStr := md.Get("offset")
-
-		limit := int32(10) // значение по умолчанию
-		offset := int32(0) // значение по умолчанию
-
-		if len(limitStr) > 0 {
-			if l, err := strconv.ParseInt(limitStr[0], 10, 32); err == nil {
-				limit = int32(l)
-			}
-		}
-		if len(offsetStr) > 0 {
-			if o, err := strconv.ParseInt(offsetStr[0], 10, 32); err == nil {
-				offset = int32(o)
-			}
-		}
-
-		s.logger.Info("Parsed pagination parameters",
-			slog.Int("limit", int(limit)),
-			slog.Int("offset", int(offset)),
-		)
-
-		resp, err := s.userClient.ListUsers(ctx, &userProto.ListUsersRequest{
-			Limit:  limit,
-			Offset: offset,
-		})
-		return errors.MarshalResponse(resp, err)
-
-	default:
-		s.logger.Warn("Method not implemented", "method", method)
-		return nil, http.StatusNotImplemented, status.Error(codes.Unimplemented, "method not implemented")
-	}
-}
-
 // Close закрывает все соединения
 func (s *proxyService) Close() error {
 	var errs []error
+
+	// Закрываем кеш соединение
+	if s.cacheManager != nil && s.cacheManager.cacheService != nil {
+		if err := s.cacheManager.cacheService.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("failed to close cache connection: %w", err))
+		}
+	}
 
 	// Закрываем соединения с сервисами
 	if s.authConn != nil {
@@ -353,4 +273,23 @@ func (s *proxyService) Close() error {
 		return fmt.Errorf("errors during close: %v", errs)
 	}
 	return nil
+}
+
+func (s *proxyService) PingService(ctx context.Context, serviceName string) error {
+	switch serviceName {
+	case "geo":
+		// AddressSearch с пустым запросом
+		_, err := s.geoHandler.GeoClient.AddressSearch(ctx, &geoProto.SearchRequest{Query: ""})
+		return err
+	case "auth":
+		// ValidateToken с заведомо невалидным токеном
+		_, err := s.authHandler.ValidateToken(ctx, "invalid-token-for-healthcheck")
+		return err
+	case "user":
+		// ListUsers с limit=1
+		_, err := s.userHandler.UserClient.ListUsers(ctx, &userProto.ListUsersRequest{Limit: 1, Offset: 0})
+		return err
+	default:
+		return fmt.Errorf("unknown service: %s", serviceName)
+	}
 }

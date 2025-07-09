@@ -18,4 +18,12 @@ type GeoConfig struct {
 	LogFormat         string        `env:"LOG_FORMAT" envDefault:"json"`
 	ShutdownTimeout   time.Duration `env:"SHUTDOWN_TIMEOUT" envDefault:"10s"`
 	MaxAddressResults int           `env:"MAX_ADDRESS_RESULTS" envDefault:"10"`
+
+	// Redis connection pooling settings
+	RedisPoolSize     int           `env:"REDIS_POOL_SIZE" envDefault:"10"`
+	RedisMinIdleConns int           `env:"REDIS_MIN_IDLE_CONNS" envDefault:"5"`
+	RedisMaxRetries   int           `env:"REDIS_MAX_RETRIES" envDefault:"3"`
+	RedisDialTimeout  time.Duration `env:"REDIS_DIAL_TIMEOUT" envDefault:"5s"`
+	RedisReadTimeout  time.Duration `env:"REDIS_READ_TIMEOUT" envDefault:"3s"`
+	RedisWriteTimeout time.Duration `env:"REDIS_WRITE_TIMEOUT" envDefault:"3s"`
 }

@@ -377,10 +377,14 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "lat": {
-                    "type": "number"
+                    "type": "number",
+                    "maximum": 90,
+                    "minimum": -90
                 },
                 "lng": {
-                    "type": "number"
+                    "type": "number",
+                    "maximum": 180,
+                    "minimum": -180
                 },
                 "value": {
                     "type": "string"
@@ -389,6 +393,10 @@ const docTemplate = `{
         },
         "models.AuthRequest": {
             "type": "object",
+            "required": [
+                "email",
+                "password"
+            ],
             "properties": {
                 "email": {
                     "type": "string",
@@ -396,6 +404,7 @@ const docTemplate = `{
                 },
                 "password": {
                     "type": "string",
+                    "minLength": 8,
                     "example": "qwerty123"
                 }
             }
@@ -427,13 +436,21 @@ const docTemplate = `{
         },
         "models.GeoGeocodeRequest": {
             "type": "object",
+            "required": [
+                "lat",
+                "lng"
+            ],
             "properties": {
                 "lat": {
                     "type": "string",
+                    "maxLength": 90,
+                    "minLength": -90,
                     "example": "55.7558"
                 },
                 "lng": {
                     "type": "string",
+                    "maxLength": 180,
+                    "minLength": -180,
                     "example": "37.6173"
                 }
             }
@@ -451,6 +468,9 @@ const docTemplate = `{
         },
         "models.GeoSearchRequest": {
             "type": "object",
+            "required": [
+                "query"
+            ],
             "properties": {
                 "query": {
                     "type": "string",
@@ -462,10 +482,13 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "limit": {
-                    "type": "integer"
+                    "type": "integer",
+                    "maximum": 100,
+                    "minimum": 1
                 },
                 "offset": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 0
                 },
                 "total_count": {
                     "type": "integer"
@@ -480,6 +503,9 @@ const docTemplate = `{
         },
         "models.UserResponse": {
             "type": "object",
+            "required": [
+                "id"
+            ],
             "properties": {
                 "created_at": {
                     "type": "string"

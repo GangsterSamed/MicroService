@@ -1,6 +1,7 @@
-package handler
+package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -10,12 +11,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc/metadata"
-	pb "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/auth/proto"
-	pbGeo "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/geo/proto"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/errors"
-	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/proxy/internal/service"
-	pbUser "studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/user/proto"
 )
+
+// ProxyServiceInterface определяет интерфейс для прокси-сервиса
+type ProxyServiceInterface interface {
+	ForwardRequest(ctx context.Context, serviceName, path string, body []byte, md metadata.MD) ([]byte, int, error)
+	Close() error
+	PingService(ctx context.Context, serviceName string) error
+}
 
 type ProxyHandler interface {
 	HandleRegisterRequest() gin.HandlerFunc
@@ -27,14 +31,11 @@ type ProxyHandler interface {
 }
 
 type proxyHandler struct {
-	proxyService service.ProxyService
+	proxyService ProxyServiceInterface
 	logger       *slog.Logger
-	authClient   pb.AuthServiceClient
-	userClient   pbUser.UserServiceClient
-	geoClient    pbGeo.GeoServiceClient
 }
 
-func NewProxyHandler(proxyService service.ProxyService, logger *slog.Logger) (ProxyHandler, error) {
+func NewProxyHandler(proxyService ProxyServiceInterface, logger *slog.Logger) (ProxyHandler, error) {
 	return &proxyHandler{
 		proxyService: proxyService,
 		logger:       logger,
@@ -141,6 +142,15 @@ func (h *proxyHandler) HandleListRequest() gin.HandlerFunc {
 }
 
 func (h *proxyHandler) handleAuthRequest(c *gin.Context) {
+	h.handleRequestWithBody(c, "auth")
+}
+
+func (h *proxyHandler) handleGeoRequest(c *gin.Context) {
+	h.handleRequestWithBody(c, "geo")
+}
+
+// handleRequestWithBody обрабатывает запросы с телом (POST)
+func (h *proxyHandler) handleRequestWithBody(c *gin.Context, serviceName string) {
 	requestData, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		errors.WriteError(c, http.StatusBadRequest, "failed to read request body")
@@ -149,7 +159,10 @@ func (h *proxyHandler) handleAuthRequest(c *gin.Context) {
 
 	headers := h.extractHeaders(c.Request)
 	ctx := c.Request.Context()
-	response, statusCode, err := h.proxyService.ForwardRequest(ctx, "auth", c.Request.URL.Path, requestData, headers)
+	if serviceName != "auth" {
+		ctx = metadata.NewOutgoingContext(ctx, headers)
+	}
+	response, statusCode, err := h.proxyService.ForwardRequest(ctx, serviceName, c.Request.URL.Path, requestData, headers)
 
 	h.handleResponse(c, response, statusCode, err)
 }
@@ -171,26 +184,12 @@ func (h *proxyHandler) handleUserRequest(c *gin.Context) {
 	h.handleResponse(c, response, statusCode, err)
 }
 
-func (h *proxyHandler) handleGeoRequest(c *gin.Context) {
-	requestData, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		errors.WriteError(c, http.StatusBadRequest, "failed to read request body")
-		return
-	}
-
-	headers := h.extractHeaders(c.Request)
-	ctx := metadata.NewOutgoingContext(c.Request.Context(), headers)
-	response, statusCode, err := h.proxyService.ForwardRequest(ctx, "geo", c.Request.URL.Path, requestData, headers)
-
-	h.handleResponse(c, response, statusCode, err)
-}
-
 func (h *proxyHandler) extractHeaders(r *http.Request) metadata.MD {
 	md := metadata.MD{}
 
 	// Логируем все заголовки запроса
 	h.logger.Info("Received headers",
-		slog.Any("headers", r.Header),
+		"headers", r.Header,
 	)
 
 	// Добавим все заголовки, которые начинаются с X- или Grpc- (без учёта регистра)
@@ -204,7 +203,7 @@ func (h *proxyHandler) extractHeaders(r *http.Request) metadata.MD {
 	// Обрабатываем authorization, если он есть
 	if auth := r.Header.Get("authorization"); auth != "" {
 		h.logger.Info("Found authorization header",
-			slog.String("auth", auth),
+			"auth", auth,
 		)
 		md["authorization"] = []string{auth}
 	} else {
@@ -212,7 +211,7 @@ func (h *proxyHandler) extractHeaders(r *http.Request) metadata.MD {
 	}
 
 	h.logger.Info("Created metadata",
-		slog.Any("metadata", md),
+		"metadata", md,
 	)
 
 	return md
@@ -236,11 +235,13 @@ func (h *proxyHandler) handleResponse(c *gin.Context, response []byte, statusCod
 func (h *proxyHandler) withLogging(name string, handler gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
-		defer h.logger.Info(name+" request processed",
-			slog.Duration("duration", time.Since(start)),
-			slog.String("method", c.Request.Method),
-			slog.String("path", c.Request.URL.Path),
-		)
+		defer func() {
+			h.logger.Info(name+" request processed",
+				"duration", time.Since(start),
+				"method", c.Request.Method,
+				"path", c.Request.URL.Path,
+			)
+		}()
 		handler(c)
 	}
 }

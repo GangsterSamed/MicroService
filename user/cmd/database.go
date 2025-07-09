@@ -4,12 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"time"
+
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"log/slog"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/internal/config"
-	"time"
 )
 
 func initDatabase(cfg *config.UserConfig, logger *slog.Logger) (*sql.DB, error) {
@@ -24,6 +25,12 @@ func initDatabase(cfg *config.UserConfig, logger *slog.Logger) (*sql.DB, error) 
 			return nil, fmt.Errorf("failed to connect to database: %w", err)
 		}
 
+		// Настройка connection pooling
+		db.SetMaxOpenConns(cfg.DBMaxOpenConns)
+		db.SetMaxIdleConns(cfg.DBMaxIdleConns)
+		db.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
+		db.SetConnMaxIdleTime(cfg.DBConnMaxIdleTime)
+
 		// Проверка подключения
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -32,6 +39,9 @@ func initDatabase(cfg *config.UserConfig, logger *slog.Logger) (*sql.DB, error) 
 			time.Sleep(2 * time.Second)
 			continue
 		}
+
+		// Если подключение успешно, выходим из цикла
+		break
 	}
 
 	// Применяем миграции
@@ -39,7 +49,12 @@ func initDatabase(cfg *config.UserConfig, logger *slog.Logger) (*sql.DB, error) 
 		return nil, fmt.Errorf("failed to apply migrations: %w", err)
 	}
 
-	logger.Info("Database connection established")
+	logger.Info("Database connection established with connection pooling",
+		"max_open_conns", cfg.DBMaxOpenConns,
+		"max_idle_conns", cfg.DBMaxIdleConns,
+		"conn_max_lifetime", cfg.DBConnMaxLifetime,
+		"conn_max_idle_time", cfg.DBConnMaxIdleTime,
+	)
 	return db, nil
 }
 

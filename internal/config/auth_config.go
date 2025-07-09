@@ -26,4 +26,12 @@ type AuthConfig struct {
 	DBUser     string `env:"DB_USER" envDefault:"user"`
 	DBPassword string `env:"DB_PASSWORD" envDefault:"password"`
 	DBName     string `env:"DB_NAME" envDefault:"auth"`
+
+	// gRPC connection pooling settings
+	GRPCDialTimeout       time.Duration `env:"GRPC_DIAL_TIMEOUT" envDefault:"30s"`
+	GRPCMinConnectTimeout time.Duration `env:"GRPC_MIN_CONNECT_TIMEOUT" envDefault:"30s"`
+	GRPCBackoffBaseDelay  time.Duration `env:"GRPC_BACKOFF_BASE_DELAY" envDefault:"2s"`
+	GRPCBackoffMaxDelay   time.Duration `env:"GRPC_BACKOFF_MAX_DELAY" envDefault:"60s"`
+	GRPCBackoffMultiplier float64       `env:"GRPC_BACKOFF_MULTIPLIER" envDefault:"1.6"`
+	GRPCMaxRetries        int           `env:"GRPC_MAX_RETRIES" envDefault:"3"`
 }

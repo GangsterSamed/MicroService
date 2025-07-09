@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/ekomobile/dadata/v2/api/suggest"
 	"studentgit.kata.academy/romanmalcev89665_gmail.com/go-kata/new-repository/MicroService/geo/internal/models"
@@ -35,7 +36,17 @@ func (g *GeoService) AddressSearch(args *models.SearchArgs, reply *[]*models.Add
 }
 
 func (g *GeoService) GeoCode(args *models.GeoArgs, reply *[]*models.Address) error {
-	httpClient := &http.Client{}
+	// Создаем HTTP клиент с connection pooling
+	httpClient := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+			DisableCompression:  false,
+		},
+	}
+
 	var data = strings.NewReader(fmt.Sprintf(`{"lat": %s, "lon": %s}`, args.Lat, args.Lng))
 
 	req, err := http.NewRequest(
